@@ -13,6 +13,8 @@ const fetchUrl = process.env.AQUASUITEURL;
 
 const mqttConfig = {
   resubscribe: true,
+  protocol:"mqtt",
+  reconnectPeriod:4000
 };
 
 if (mqttUsername) {
