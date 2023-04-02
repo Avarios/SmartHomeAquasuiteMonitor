@@ -21,6 +21,7 @@ const String WIFIPW = "33394151923058759658";
 #define MQTT_PORT 1883
 #define WIFI_SSID "Adfnet"
 #define WIFI_PASSWORD "33394151923058759658"
+#define CMD_ONE_COLUMN_SCROLL_H_LEFT 0x2D
 
 Adafruit_SSD1306 display = Adafruit_SSD1306(128, 32, &Wire, -1);
 
@@ -30,7 +31,8 @@ Ticker mqttReconnectTimer;
 WiFiEventHandler wifiConnectHandler;
 WiFiEventHandler wifiDisconnectHandler;
 Ticker wifiReconnectTimer;
-String messages[4];
+String oledMessage;
+int fontSize = 4;
 
 void connectToWifi()
 {
@@ -119,11 +121,12 @@ void onMqttMessage(char *topic, char *payload, AsyncMqttClientMessageProperties 
   }
   if (!error)
   {
+    oledMessage = "";
     for (size_t i = 0; i <= 3; i++)
     {
       String name = doc[i]["name"].as<String>();
       String value = doc[i]["value"].as<String>();
-      messages[i] = name + ":" + value + "\n";
+      oledMessage += name + ":" + value + "   ";
     }
   }
 }
@@ -138,6 +141,10 @@ void onMqttPublish(uint16_t packetId)
 void initDisplay()
 {
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+  display.setTextSize(fontSize);
+  display.setTextWrap(false);
+  display.setTextColor(SSD1306_WHITE);
+  display.setFont(_GFXFONT_H_);
   display.clearDisplay();
 }
 
@@ -157,28 +164,31 @@ void setup()
   mqttClient.onMessage(onMqttMessage);
   mqttClient.onPublish(onMqttPublish);
   mqttClient.setServer(MQTT_HOST, MQTT_PORT);
-
   connectToWifi();
   initDisplay();
   pinMode(LED_BUILTIN, OUTPUT);
 }
 
 void showOLEDMessage(String message)
-{ 
-  display.clearDisplay();
-  display.setTextSize(2);
-  display.setFont(_GFXFONT_H_);
-  display.setTextColor(SSD1306_WHITE);
+{
+  // Set the minimum x Position by fontsize *6 (ADAFruit Documentation) and multiply by message size
+  int minX = (fontSize * -6) * strlen(message.c_str());
+  // Set current x to the display width (in my case 128)
+  int x = display.width();
   display.setCursor(0, 0);
-  display.println(message);
-  display.display(); // displays content in buffer
+  while (x > minX)
+  {
+    display.clearDisplay();
+    display.setCursor(x, 0);
+    display.print(message);
+    x = x - 2;
+    display.display();
+  }
+
+  // displays content in buffer
 }
 
 void loop()
 {
-  for (size_t i = 0; i < 4; i++)
-  {
-    showOLEDMessage(messages[i]);
-    delay(2000);
-  }
+  showOLEDMessage(oledMessage);
 }
