@@ -11,6 +11,7 @@
 #include "AsyncMqttClient.h"
 #include "Ticker.h"
 #include "ArduinoJson.h"
+void IRAM_ATTR ButtonPress();
 
 const String SSID = "Adfnet";
 const String WIFIPW = "33394151923058759658";
@@ -31,8 +32,12 @@ Ticker mqttReconnectTimer;
 WiFiEventHandler wifiConnectHandler;
 WiFiEventHandler wifiDisconnectHandler;
 Ticker wifiReconnectTimer;
+String oledMessages[4];
 String oledMessage;
+
+bool state = true;        // the current state of the output pin
 int fontSize = 4;
+int reading = 1;
 
 void connectToWifi()
 {
@@ -96,23 +101,61 @@ void onMqttUnsubscribe(uint16_t packetId)
   Serial.println(packetId);
 }
 
+void onMqttPublish(uint16_t packetId)
+{
+  Serial.println("Publish acknowledged.");
+  Serial.print("  packetId: ");
+  Serial.println(packetId);
+}
+
+void initDisplay()
+{
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+  display.clearDisplay();
+}
+
+void showOLEDMessage(String message)
+{
+  display.clearDisplay();
+  display.setTextSize(fontSize);
+  display.setTextWrap(false);
+  display.setFont(_GFXFONT_H_);
+  display.setTextColor(SSD1306_WHITE);
+  // Set the minimum x Position by fontsize *6 (ADAFruit Documentation) and multiply by message size
+  int minX = (fontSize * -6) * strlen(message.c_str());
+  // Set current x to the display width (in my case 128)
+  int x = display.width();
+  display.setCursor(0, 0);
+  while (x > minX)
+  {
+    display.clearDisplay();
+    display.setCursor(x, 0);
+    display.print(message);
+    x = x - 2;
+    display.display();
+  }
+
+  // displays content in buffer
+}
+
+void showOLEDMessage(String messages[])
+{
+  for (size_t i = 0; i < sizeof(messages); i++)
+  {
+    display.clearDisplay();
+    display.setTextSize(2);
+    display.setFont(_GFXFONT_H_);
+    display.setTextWrap(true);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(0, 0);
+    display.println(messages[i]);
+    display.display();
+    delay(2000);
+  }
+}
+
 void onMqttMessage(char *topic, char *payload, AsyncMqttClientMessageProperties properties, size_t len, size_t index, size_t total)
 {
-  Serial.println("Publish received.");
-  Serial.print("  topic: ");
-  Serial.println(topic);
-  Serial.print("  qos: ");
-  Serial.println(properties.qos);
-  Serial.print("  dup: ");
-  Serial.println(properties.dup);
-  Serial.print("  retain: ");
-  Serial.println(properties.retain);
-  Serial.print("  len: ");
-  Serial.println(len);
-  Serial.print("  index: ");
-  Serial.println(index);
-  Serial.print("  total: ");
-  Serial.println(total);
   StaticJsonDocument<512> doc;
   DeserializationError error = deserializeJson(doc, payload);
   if (error)
@@ -126,26 +169,14 @@ void onMqttMessage(char *topic, char *payload, AsyncMqttClientMessageProperties 
     {
       String name = doc[i]["name"].as<String>();
       String value = doc[i]["value"].as<String>();
-      oledMessage += name + ":" + value + "   ";
+      oledMessages[i] = name + ":" + value;
+      oledMessage += name + ":" + value + "    ";
     }
   }
 }
 
-void onMqttPublish(uint16_t packetId)
-{
-  Serial.println("Publish acknowledged.");
-  Serial.print("  packetId: ");
-  Serial.println(packetId);
-}
-
-void initDisplay()
-{
-  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
-  display.setTextSize(fontSize);
-  display.setTextWrap(false);
-  display.setTextColor(SSD1306_WHITE);
-  display.setFont(_GFXFONT_H_);
-  display.clearDisplay();
+void ButtonPress() {
+  reading = LOW;
 }
 
 void setup()
@@ -167,28 +198,25 @@ void setup()
   connectToWifi();
   initDisplay();
   pinMode(LED_BUILTIN, OUTPUT);
-}
-
-void showOLEDMessage(String message)
-{
-  // Set the minimum x Position by fontsize *6 (ADAFruit Documentation) and multiply by message size
-  int minX = (fontSize * -6) * strlen(message.c_str());
-  // Set current x to the display width (in my case 128)
-  int x = display.width();
-  display.setCursor(0, 0);
-  while (x > minX)
-  {
-    display.clearDisplay();
-    display.setCursor(x, 0);
-    display.print(message);
-    x = x - 2;
-    display.display();
-  }
-
-  // displays content in buffer
+  pinMode(D5,INPUT_PULLUP);
+  attachInterrupt(D5,ButtonPress,FALLING);
 }
 
 void loop()
 {
-  showOLEDMessage(oledMessage);
+  Serial.println("reading: " + String(reading));
+  if(reading == LOW) {
+    state = !state;
+    reading = HIGH;
+  }
+
+  if (state)
+  {
+    showOLEDMessage(oledMessage);
+  }
+  else
+  {
+    showOLEDMessage(oledMessages);
+  }
+  delay(100);
 }
